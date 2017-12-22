@@ -59,24 +59,22 @@ class CycleGAN:
         shape=[batch_size, image_size, image_size, 3])
     self.fake_y = tf.placeholder(tf.float32,
         shape=[batch_size, image_size, image_size, 3])
-#%%
+
   def model(self):
     X_reader = Reader(self.X_train_file, name='X',
         image_size=self.image_size, batch_size=self.batch_size)
     Y_reader = Reader(self.Y_train_file, name='Y',
         image_size=self.image_size, batch_size=self.batch_size)
 
-    x = X_reader.feed() #picture x
-    y = Y_reader.feed() #picture y
+    x = X_reader.feed()
+    y = Y_reader.feed()
 
     cycle_loss = self.cycle_consistency_loss(self.G, self.F, x, y)
 
     # X -> Y
     fake_y = self.G(x)
-    #keep output is similiar to input ,so we use fake_y
-    G_gan_loss = self.generator_loss(self.D_Y, fake_y, use_lsgan=self.use_lsgan) 
+    G_gan_loss = self.generator_loss(self.D_Y, fake_y, use_lsgan=self.use_lsgan)
     G_loss =  G_gan_loss + cycle_loss
-    #learn common feature from the other sets
     D_Y_loss = self.discriminator_loss(self.D_Y, y, self.fake_y, use_lsgan=self.use_lsgan)
 
     # Y -> X
@@ -102,28 +100,29 @@ class CycleGAN:
     tf.summary.image('Y/generated', utils.batch_convert2int(self.F(y)))
     tf.summary.image('Y/reconstruction', utils.batch_convert2int(self.G(self.F(y))))
 
-    return G_loss, D_Y_loss, F_loss, D_X_loss, fake_y, fake_x 
-#%%
-  def optimize(self, G_loss, D_Y_loss, F_loss, D_X_loss):
+    return G_loss, D_Y_loss, F_loss, D_X_loss, fake_y, fake_x
 
-    global_step = tf.Variable(0, trainable=False)
-    starter_learning_rate = self.learning_rate
-    end_learning_rate = 0.0
-    start_decay_step = 100000
-    decay_steps = 100000
-    beta1 = self.beta1
-    learning_rate = (
+  def optimize(self, G_loss, D_Y_loss, F_loss, D_X_loss):
+    def make_optimizer(loss, variables, name='Adam'):
+      """ Adam optimizer with learning rate 0.0002 for the first 100k steps (~100 epochs)
+          and a linearly decaying rate that goes to zero over the next 100k steps
+      """
+      global_step = tf.Variable(0, trainable=False)
+      starter_learning_rate = self.learning_rate
+      end_learning_rate = 0.0
+      start_decay_step = 100000
+      decay_steps = 100000
+      beta1 = self.beta1
+      learning_rate = (
           tf.where(
-                  #true or false
                   tf.greater_equal(global_step, start_decay_step),
                   tf.train.polynomial_decay(starter_learning_rate, global_step-start_decay_step,
                                             decay_steps, end_learning_rate,
                                             power=1.0),
                   starter_learning_rate
           )
-    
-    )
-    def make_optimizer(loss, variables, name='Adam'):
+
+      )
       tf.summary.scalar('learning_rate/{}'.format(name), learning_rate)
 
       learning_step = (
@@ -139,7 +138,7 @@ class CycleGAN:
 
     with tf.control_dependencies([G_optimizer, D_Y_optimizer, F_optimizer, D_X_optimizer]):
       return tf.no_op(name='optimizers')
-#%%
+
   def discriminator_loss(self, D, y, fake_y, use_lsgan=True):
     """ Note: default: D(y).shape == (batch_size,5,5,1),
                        fake_buffer_size=50, batch_size=1
@@ -154,14 +153,13 @@ class CycleGAN:
       # use mean squared error
       error_real = tf.reduce_mean(tf.squared_difference(D(y), REAL_LABEL))
       error_fake = tf.reduce_mean(tf.square(D(fake_y)))
-      
     else:
-      # use original loss
+      # use cross entropy
       error_real = -tf.reduce_mean(ops.safe_log(D(y)))
       error_fake = -tf.reduce_mean(ops.safe_log(1-D(fake_y)))
     loss = (error_real + error_fake) / 2
     return loss
-#%%
+
   def generator_loss(self, D, fake_y, use_lsgan=True):
     """  fool discriminator into believing that G(x) is real
     """
@@ -172,7 +170,7 @@ class CycleGAN:
       # heuristic, non-saturating loss
       loss = -tf.reduce_mean(ops.safe_log(D(fake_y))) / 2
     return loss
-#%%
+
   def cycle_consistency_loss(self, G, F, x, y):
     """ cycle consistency loss (L1 norm)
     """
