@@ -9,8 +9,8 @@ def convert2int(image):
 def convert2float(image):
   """ Transfrom from int image ([0,255]) to float tensor ([-1.,1.])
   """
-  image = tf.image.convert_image_dtype(image, dtype=tf.float32) #[0,1]
-  return image*2 - 1.0
+  image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+  return (image/127.5) - 1.0
 
 def batch_convert2int(images):
   """
@@ -55,4 +55,3 @@ class ImagePool:
         return tmp
       else:
         return image
-
